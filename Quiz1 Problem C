@@ -1,0 +1,55 @@
+#include <stdio.h>
+#include <stdint.h>
+#include <assert.h>
+
+static inline float fabsf(float x) {
+    uint32_t i = *(uint32_t *)&x;
+    i &= 0x7FFFFFFF;
+    x = *(float *)&i;
+    return x;
+}
+
+static inline int my_clz(uint32_t x) {
+    int count = 0;
+    for (int i = 31; i >= 0; --i) {
+        if (x & (1U << i))
+            break;
+        count++;
+    }
+    return count;
+}
+
+static inline uint32_t fp16_to_fp32(uint16_t h) {
+    const uint32_t w = (uint32_t) h << 16;
+    const uint32_t sign = w & UINT32_C(0x80000000);
+    const uint32_t nonsign = w & UINT32_C(0x7FFFFFFF);
+    uint32_t renorm_shift = my_clz(nonsign);
+    renorm_shift = renorm_shift > 5 ? renorm_shift - 5 : 0;
+    const int32_t inf_nan_mask = ((int32_t)(nonsign + 0x04000000) >> 8) & INT32_C(0x7F800000);
+    const int32_t zero_mask = (int32_t)(nonsign - 1) >> 31;
+    return sign | ((((nonsign << renorm_shift >> 3) + ((0x70 - renorm_shift) << 23)) | inf_nan_mask) & ~zero_mask);
+}
+
+int main() {
+    float f = -5.75f;
+    uint32_t x = 0x00F00000;
+    uint16_t h = 0x3C00; // Example half-precision value (1.0 in half-precision)
+    
+    float abs_f = fabsf(f);
+    int leading_zeros = my_clz(x);
+    uint32_t fp32_value = fp16_to_fp32(h);
+    
+    // Output the results of the functions
+    printf("Absolute value of -5.75: %f\n", abs_f);
+    printf("Leading zeros in 0x00F00000: %d\n", leading_zeros);
+    printf("Half-precision value 0x3C00 to float: 0x%08X\n", fp32_value);
+    
+    // Automated testing
+    assert(abs_f == 5.75f && "fabsf test failed");
+    assert(leading_zeros == 8 && "my_clz test failed");
+    assert(fp32_value == 0x3F800000 && "fp16_to_fp32 test failed");
+    
+    printf("All tests passed successfully!\n");
+    
+    return 0;
+}
