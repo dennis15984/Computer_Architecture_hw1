@@ -1,0 +1,70 @@
+#include <stdio.h>
+#include <stdlib.h>
+
+void singleNumber(int* nums, int numsSize, int* result) {
+    int xorResult = 0;
+    for (int i = 0; i < numsSize; i++) {
+        xorResult ^= nums[i];
+    }
+    
+    // Find the least significant set bit in xorResult
+    // replace the following line
+    // int differingBit = 1 << countTrailingZeros(xorResult);
+    int differingBit = xorResult & (-xorResult);
+    
+    int num1 = 0, num2 = 0;
+    for (int i = 0; i < numsSize; i++) {
+        if (nums[i] & differingBit) {
+            num1 ^= nums[i];
+        } else {
+            num2 ^= nums[i];
+        }
+    }
+    result[0] = num1;
+    result[1] = num2;
+}
+
+// Function to verify the results
+void verifyResults(int* nums, int numsSize, int expected1, int expected2) {
+    int result[2];
+    singleNumber(nums, numsSize, result);
+    
+    printf("singleNumber result: %d %d\n", result[0], result[1]);
+
+    // Sort the result and expected values for consistent comparison
+    if (result[0] > result[1]) {
+        int temp = result[0];
+        result[0] = result[1];
+        result[1] = temp;
+    }
+    if (expected1 > expected2) {
+        int temp = expected1;
+        expected1 = expected2;
+        expected2 = temp;
+    }
+    
+    if (!(result[0] == expected1 && result[1] == expected2)) {
+        printf("Test case failed\n");
+        exit(1);
+    }
+}
+
+int main() {
+    // Test case 1
+    int nums1[] = {1, 2, 1, 3, 2, 5};
+    int numsSize1 = sizeof(nums1) / sizeof(nums1[0]);
+    verifyResults(nums1, numsSize1, 3, 5);
+
+    // Test case 2
+    int nums2[] = {4, 1, 2, 1, 2, 3};
+    int numsSize2 = sizeof(nums2) / sizeof(nums2[0]);
+    verifyResults(nums2, numsSize2, 3, 4);
+
+    // Test case 3
+    int nums3[] = {10, 11, 10, 13, 14, 13, 14, 9};
+    int numsSize3 = sizeof(nums3) / sizeof(nums3[0]);
+    verifyResults(nums3, numsSize3, 9, 11);
+
+    printf("All test cases completed\n");
+    return 0;
+}
