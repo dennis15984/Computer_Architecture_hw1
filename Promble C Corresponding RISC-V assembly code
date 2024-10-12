@@ -1,0 +1,188 @@
+.data
+fabsf_msg: .string "Absolute value of -5.75: "
+clz_msg: .string "Leading zeros in 15728640: "
+fp16_msg: .string "Half-precision value 0x3C00 to float: "
+success_msg: .string "All tests passed successfully!\n"
+fail_msg: .string "Test failed: "
+abs_error: .string "Incorrect absolute value\n"
+clz_error: .string "Incorrect leading zero count\n"
+fp_error: .string "Incorrect half-precision to float conversion\n"
+newline: .string "\n"
+
+.text
+.globl main
+
+main:
+    # Initialize values
+    li s0, 0xC0B80000       # -5.75f in IEEE 754 format
+    li s1, 0x00F00000       # x = 15728640 (0x00F00000)
+    li s2, 0x3C00           # h = 0x3C00
+
+    # Test fabsf
+    mv a0, s0
+    jal ra, fabsf
+    mv s3, a0               # Save result
+    
+    # Print fabsf result
+    la a0, fabsf_msg
+    li a7, 4
+    ecall
+    mv a0, s3
+    li a7, 2                # Print float
+    ecall
+    la a0, newline
+    li a7, 4
+    ecall
+
+    # Check fabsf result
+    li t0, 0x40B80000       # Expected: 5.75f
+    bne s3, t0, abs_fail
+
+    # Test my_clz
+    mv a0, s1
+    jal ra, my_clz
+    mv s4, a0               # Save result
+
+    # Print my_clz result
+    la a0, clz_msg
+    li a7, 4
+    ecall
+    mv a0, s4
+    li a7, 1                # Print integer
+    ecall
+    la a0, newline
+    li a7, 4
+    ecall
+
+    # Check my_clz result
+    li t0, 8                # Expected: 8
+    bne s4, t0, clz_fail
+
+    # Test fp16_to_fp32
+    mv a0, s2
+    jal ra, fp16_to_fp32
+    mv s5, a0               # Save result
+
+    # Print fp16_to_fp32 result
+    la a0, fp16_msg
+    li a7, 4
+    ecall
+    mv a0, s5
+    li a7, 34               # Print in hexadecimal
+    ecall
+    la a0, newline
+    li a7, 4
+    ecall
+
+    # Check fp16_to_fp32 result
+    li t0, 0x3F800000       # Expected: 0x3F800000 (1.0f)
+    bne s5, t0, fp_fail
+
+    # All tests passed
+    la a0, success_msg
+    li a7, 4
+    ecall
+    j exit
+
+abs_fail:
+    la a0, fail_msg
+    li a7, 4
+    ecall
+    la a0, abs_error
+    li a7, 4
+    ecall
+    j exit
+
+clz_fail:
+    la a0, fail_msg
+    li a7, 4
+    ecall
+    la a0, clz_error
+    li a7, 4
+    ecall
+    j exit
+
+fp_fail:
+    la a0, fail_msg
+    li a7, 4
+    ecall
+    la a0, fp_error
+    li a7, 4
+    ecall
+    j exit
+
+exit:
+    li a7, 10
+    ecall
+
+# Function: fabsf
+fabsf:
+    li t0, 0x7FFFFFFF
+    and a0, a0, t0
+    ret
+
+# Function: my_clz
+my_clz:
+    li t0, 31       # i = 31
+    li t1, 0        # count = 0
+    li t2, 1
+clz_loop:
+    sll t3, t2, t0  # 1U << i
+    and t3, a0, t3  # x & (1U << i)
+    bnez t3, clz_end
+    addi t1, t1, 1  # count++
+    addi t0, t0, -1 # i--
+    bgez t0, clz_loop
+clz_end:
+    mv a0, t1
+    ret
+
+# Function: fp16_to_fp32
+fp16_to_fp32:
+    # Save return address and used registers
+    addi sp, sp, -16
+    sw ra, 12(sp)
+    sw s0, 8(sp)
+    sw s1, 4(sp)
+    sw s2, 0(sp)
+    
+    slli s0, a0, 16         # w = (uint32_t) h << 16
+    li t1, 0x80000000
+    and s1, s0, t1          # sign = w & 0x80000000
+    li t1, 0x7FFFFFFF
+    and s2, s0, t1          # nonsign = w & 0x7FFFFFFF
+    mv a0, s2
+    jal ra, my_clz          # renorm_shift = my_clz(nonsign)
+    mv t4, a0
+    li t1, 5
+    bge t4, t1, renorm_adjust
+    li t4, 0
+    j renorm_done
+renorm_adjust:
+    addi t4, t4, -5
+renorm_done:
+    li t5, 0x04000000
+    add t5, s2, t5
+    srli t5, t5, 8
+    li t1, 0x7F800000
+    and t5, t5, t1          # inf_nan_mask
+    addi t6, s2, -1
+    srai t6, t6, 31         # zero_mask
+    sll t0, s2, t4          # nonsign << renorm_shift
+    srli t0, t0, 3          # (nonsign << renorm_shift) >> 3
+    li t1, 0x70
+    sub t1, t1, t4          # (0x70 - renorm_shift)
+    slli t1, t1, 23         # ((0x70 - renorm_shift) << 23)
+    add t0, t0, t1          # + ((0x70 - renorm_shift) << 23)
+    or t0, t0, t5           # | inf_nan_mask
+    not t6, t6              # ~zero_mask
+    and t0, t0, t6          # & ~zero_mask
+    or a0, s1, t0           # sign | (...)
+    
+    # Restore saved registers and return
+    lw s2, 0(sp)
+    lw s1, 4(sp)
+    lw s0, 8(sp)
+    lw ra, 12(sp)
+    addi sp, sp, 16
+    ret
